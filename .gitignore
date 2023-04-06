@@ -243,3 +243,6 @@ test_audio/
 
 # local wandb configs
 wandb/
+
+# notebooks
+*.ipynb
