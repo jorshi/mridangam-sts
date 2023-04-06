@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["mridangam"]
+
+[project]
+name = "kick2kick"
+version = "0.0.1"
+dependencies = [
+    "auraloss[all]",
+    "einops",
+    "torch ~= 1.13",
+    "torchaudio ~= 0.13",
+    "pytorch_lightning ~= 1.9.0",
+    "torchmetrics",
+    "torchcrepe",
+    "notebook",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "flake8",
+    "pytest",
+    "pytest-mock",
+    "pyfakefs",
+    "pre-commit",
+    "pytest-cov",
+    "pytest-xdist",
+    "jupytext"
+]
