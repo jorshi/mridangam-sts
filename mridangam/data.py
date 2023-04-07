@@ -3,6 +3,7 @@ Dataset and dataloader for mridangam stroke dataset
 """
 from pathlib import Path
 from typing import List
+from typing import Literal
 from typing import Tuple
 
 import pytorch_lightning as pl
@@ -16,7 +17,13 @@ from tqdm import tqdm
 
 
 class MridangamDataModule(pl.LightningDataModule):
-    def __init__(self, dataset_dir: str, batch_size: int, num_workers: int):
+    def __init__(
+        self,
+        dataset_dir: str,
+        batch_size: int,
+        num_workers: int,
+        attribute: Literal["tonic", "stroke"],
+    ):
         super().__init__()
         self.dataset_dir = Path(dataset_dir)
         assert (
@@ -26,14 +33,15 @@ class MridangamDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.audio_files = None
         self.stokes = None
-        self.pitches = None
+        self.tonics = None
+        self.attribute = attribute
         self.sample_rate = torchcrepe.SAMPLE_RATE
 
     def prepare_data(self):
         # What preprocessing is needed?
         self.audio_files = []
         self.strokes = []
-        self.pitches = []
+        self.tonics = []
 
         # Find all audio files
         file_list = list(self.dataset_dir.glob("**/*.wav"))
@@ -59,7 +67,10 @@ class MridangamDataModule(pl.LightningDataModule):
             # Get annotations from file name
             annotations = Path(file).stem.split("_")[-1].split("-")
             self.strokes.append(annotations[0])
-            self.pitches.append(annotations[1])
+            self.tonics.append(annotations[1])
+
+    def preprocess_crepe(self):
+        pass
 
     def setup(self, stage: str):
         """
@@ -68,17 +79,18 @@ class MridangamDataModule(pl.LightningDataModule):
         Args:
             stage: Current stage (fit, validate, test)
         """
+        if self.attribute == "tonic":
+            attr = self.tonics
+        elif self.attribute == "stroke":
+            attr = self.stokes
+
         if stage == "fit":
-            self.train_dataset = AudioDataset(
-                self.audio_files, self.strokes, split="train"
-            )
-            self.val_dataset = AudioDataset(self.audio_files, self.strokes, split="val")
+            self.train_dataset = AudioDataset(self.audio_files, attr, split="train")
+            self.val_dataset = AudioDataset(self.audio_files, attr, split="val")
         elif stage == "validate":
-            self.val_dataset = AudioDataset(self.audio_files, self.strokes, split="val")
+            self.val_dataset = AudioDataset(self.audio_files, attr, split="val")
         elif stage == "test":
-            self.test_dataset = AudioDataset(
-                self.audio_files, self.strokes, split="test"
-            )
+            self.test_dataset = AudioDataset(self.audio_files, attr, split="test")
 
     def train_dataloader(self):
         return DataLoader(
@@ -118,6 +130,11 @@ class AudioDataset(Dataset):
         self.annotations = annotations
         assert len(self.audio_files) == len(self.annotations)
 
+        # Create class labels for annotations
+        self.labels = set(self.annotations)
+        self.label_key = {k: i for i, k in enumerate(sorted(self.labels))}
+        self.class_label = [self.label_key[j] for j in self.annotations]
+
         # Split the dataset into train, validation, and test sets
         self.seed = seed
         self.split = split
@@ -129,7 +146,11 @@ class AudioDataset(Dataset):
 
     def __getitem__(self, idx) -> Tuple[torch.Tensor, str]:
         index = self.ids[idx]
-        return self.audio_files[index], self.annotations[index]
+        return self.audio_files[index], self.class_label[index]
+
+    @property
+    def num_classes(self):
+        return len(self.labels)
 
     def _random_split(self, split: str):
         """
