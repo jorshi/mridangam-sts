@@ -17,6 +17,7 @@ dependencies = [
     "torchmetrics",
     "torchcrepe",
     "notebook",
+    "tensorboard",
 ]
 
 [project.optional-dependencies]

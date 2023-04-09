@@ -34,7 +34,12 @@ class STFTDiff(torch.nn.Module):
         Y = self._magnitude_stft(y.squeeze(1))
         Y_diff = torch.diff(Y, dim=self.diff)
 
-        loss = torch.sum(torch.square(Y[..., 1:] - Y_diff))
+        if self.diff == -1:
+            Y = Y[..., 1:]
+        else:
+            Y = Y[..., 1:, :]
+
+        loss = torch.sum(torch.square(Y - Y_diff))
         loss = loss / torch.sum(torch.square(Y))
 
         return loss
@@ -54,6 +59,7 @@ class STFTDiff(torch.nn.Module):
 
 class StationaryRegularization(torch.nn.Module):
     def __init__(self, n_fft: int = 2048, hop_size: int = 128, eps: float = 1e-8):
+        super().__init__()
         self.diff_time = STFTDiff("time", n_fft=n_fft, hop_size=hop_size)
         self.diff_freq = STFTDiff("frequency", n_fft=n_fft, hop_size=hop_size)
         self.eps = eps
@@ -64,6 +70,7 @@ class StationaryRegularization(torch.nn.Module):
 
 class TransientRegularization(torch.nn.Module):
     def __init__(self, n_fft: int = 2048, hop_size: int = 128, eps: float = 1e-8):
+        super().__init__()
         self.diff_time = STFTDiff("time", n_fft=n_fft, hop_size=hop_size)
         self.diff_freq = STFTDiff("frequency", n_fft=n_fft, hop_size=hop_size)
         self.eps = eps

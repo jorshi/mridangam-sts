@@ -93,7 +93,7 @@ class TransientStationarySeparation(pl.LightningModule):
         y_trans, y_stat = self(audio)
         y_hat = y_trans + y_stat
 
-        r_loss = self.r_weight * self.r_loss(y_hat)
+        r_loss = self.r_weight * self.r_loss(y_hat, audio)
         t_loss = self.t_weight * self.t_loss(y_trans)
         s_loss = self.s_weight * self.s_loss(y_stat)
 
@@ -108,27 +108,27 @@ class TransientStationarySeparation(pl.LightningModule):
         self.log("train/sustain_loss", s_loss, on_epoch=True)
 
         loss = r_loss + t_loss + s_loss
-        self.log("train/loss")
+        self.log("train/loss", loss, on_epoch=True)
         return loss
 
     def validation_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor, str], batch_idx: int
     ):
         r_loss, t_loss, s_loss = self._do_step(batch)
-        self.log("val/reconstruction_loss", r_loss, on_epoch=True)
-        self.log("val/transient_loss", t_loss, on_epoch=True)
-        self.log("val/sustain_loss", s_loss, on_epoch=True)
+        self.log("validation/reconstruction_loss", r_loss)
+        self.log("validation/transient_loss", t_loss)
+        self.log("validation/sustain_loss", s_loss)
 
         loss = r_loss + t_loss + s_loss
-        self.log("val/loss")
+        self.log("validation/loss", loss)
         return loss
 
     def test_step(self, batch: Tuple[torch.Tensor, torch.Tensor, str], batch_idx: int):
         r_loss, t_loss, s_loss = self._do_step(batch)
-        self.log("test/reconstruction_loss", r_loss, on_epoch=True)
-        self.log("test/transient_loss", t_loss, on_epoch=True)
-        self.log("test/sustain_loss", s_loss, on_epoch=True)
+        self.log("test/reconstruction_loss", r_loss)
+        self.log("test/transient_loss", t_loss)
+        self.log("test/sustain_loss", s_loss)
 
         loss = r_loss + t_loss + s_loss
-        self.log("test/loss")
+        self.log("test/loss", loss)
         return loss
