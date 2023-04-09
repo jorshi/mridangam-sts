@@ -246,3 +246,6 @@ wandb/
 
 # notebooks
 *.ipynb
+
+# VSCode Workspace
+*.code-workspace
