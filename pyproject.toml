@@ -9,7 +9,7 @@ packages = ["mridangam"]
 name = "kick2kick"
 version = "0.0.1"
 dependencies = [
-    "auraloss[all]",
+    "auraloss",
     "einops",
     "torch ~= 1.13",
     "torchaudio ~= 0.13",

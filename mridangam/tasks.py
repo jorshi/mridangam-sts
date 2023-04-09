@@ -27,24 +27,108 @@ class MridangamTonicClassification(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
         return optimizer
 
-    def _do_step(self, batch: Tuple[torch.tensor, str]):
+    def _do_step(self, batch: Tuple[torch.Tensor, torch.Tensor, str]):
         _, embedding, label = batch
         y_hat = self(embedding)
         y_hat = y_hat.squeeze(1)
         loss = self.loss_fn(y_hat, label)
         return loss
 
-    def training_step(self, batch: Tuple[torch.Tensor, str], batch_idx: int):
+    def training_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor, str], batch_idx: int
+    ):
         loss = self._do_step(batch)
         self.log("train/loss", loss, on_epoch=True)
         return loss
 
-    def validation_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int):
+    def validation_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor, str], batch_idx: int
+    ):
         loss = self._do_step(batch)
         self.log("validation/loss", loss)
         return loss
 
-    def test_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int):
+    def test_step(self, batch: Tuple[torch.Tensor, torch.Tensor, str], batch_idx: int):
         loss = self._do_step(batch)
         self.log("test/loss", loss)
+        return loss
+
+
+class TransientStationarySeparation(pl.LightningModule):
+    """
+    Lightning Module for performaing transient vs. stationary separation from an
+    audio signal.
+    """
+
+    def __init__(
+        self,
+        transient: torch.nn.Module,
+        stationary: torch.nn.Module,
+        reconstruction_loss: torch.nn.Module,
+        transient_loss: torch.nn.Module,
+        stationary_loss: torch.nn.Module,
+        reconstruction_weight: float = 1.0,
+        transient_weight: float = 1.0,
+        stationary_weight: float = 1.0,
+    ) -> None:
+        super().__init__()
+        self.transient = transient
+        self.stationary = stationary
+        self.r_loss = reconstruction_loss
+        self.t_loss = transient_loss
+        self.s_loss = stationary_loss
+        self.r_weight = reconstruction_weight
+        self.t_weight = transient_weight
+        self.s_weight = stationary_weight
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        return self.transient(x), self.stationary(x)
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        return optimizer
+
+    def _do_step(self, batch: Tuple[torch.tensor, str]):
+        audio, _, _ = batch
+        y_trans, y_stat = self(audio)
+        y_hat = y_trans + y_stat
+
+        r_loss = self.r_weight * self.r_loss(y_hat)
+        t_loss = self.t_weight * self.t_loss(y_trans)
+        s_loss = self.s_weight * self.s_loss(y_stat)
+
+        return r_loss, t_loss, s_loss
+
+    def training_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor, str], batch_idx: int
+    ):
+        r_loss, t_loss, s_loss = self._do_step(batch)
+        self.log("train/reconstruction_loss", r_loss, on_epoch=True)
+        self.log("train/transient_loss", t_loss, on_epoch=True)
+        self.log("train/sustain_loss", s_loss, on_epoch=True)
+
+        loss = r_loss + t_loss + s_loss
+        self.log("train/loss")
+        return loss
+
+    def validation_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor, str], batch_idx: int
+    ):
+        r_loss, t_loss, s_loss = self._do_step(batch)
+        self.log("val/reconstruction_loss", r_loss, on_epoch=True)
+        self.log("val/transient_loss", t_loss, on_epoch=True)
+        self.log("val/sustain_loss", s_loss, on_epoch=True)
+
+        loss = r_loss + t_loss + s_loss
+        self.log("val/loss")
+        return loss
+
+    def test_step(self, batch: Tuple[torch.Tensor, torch.Tensor, str], batch_idx: int):
+        r_loss, t_loss, s_loss = self._do_step(batch)
+        self.log("test/reconstruction_loss", r_loss, on_epoch=True)
+        self.log("test/transient_loss", t_loss, on_epoch=True)
+        self.log("test/sustain_loss", s_loss, on_epoch=True)
+
+        loss = r_loss + t_loss + s_loss
+        self.log("test/loss")
         return loss
