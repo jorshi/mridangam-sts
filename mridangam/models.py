@@ -35,6 +35,17 @@ def _get_activation(activation: str):
 
 
 class DilatedResidualConvolution(torch.nn.Module):
+    """
+    A single layer with a 1D residual convoluation
+
+    Args:
+        in_channels: Number of input channels
+        out_channels: Number of output channels
+        kernel_size: Size of the convolution kernel
+        dilation: Dilation of the convolution
+        activation: Activation function to use, defaults to GELU
+    """
+
     def __init__(
         self,
         in_channels: int,
@@ -63,3 +74,39 @@ class DilatedResidualConvolution(torch.nn.Module):
         y = self.convolution(y)
         y = self.activation(y)
         return y + self.residual(x)
+
+
+class TCN(torch.nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        hidden_channels: int,
+        out_channels: int,
+        dilation_base: int = 2,
+        num_layers: int = 8,
+        kernel_size: int = 3,
+        activation: str = "GELU",
+    ) -> None:
+        super().__init__()
+        self.in_projection = torch.nn.Conv1d(in_channels, hidden_channels, 1)
+        self.out_projection = torch.nn.Conv1d(hidden_channels, out_channels, 1)
+
+        net = []
+        for i in range(num_layers):
+            dilation = dilation_base**i
+            net.append(
+                DilatedResidualConvolution(
+                    in_channels=hidden_channels,
+                    out_channels=hidden_channels,
+                    kernel_size=kernel_size,
+                    dilation=dilation,
+                    activation=activation,
+                )
+            )
+        self.net = torch.nn.Sequential(*net)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.in_projection(x)
+        x = self.net(x)
+        x = self.out_projection(x)
+        return x
