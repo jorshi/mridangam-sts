@@ -249,3 +249,5 @@ wandb/
 
 # VSCode Workspace
 *.code-workspace
+
+*.zip
