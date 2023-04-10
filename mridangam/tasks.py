@@ -1,6 +1,7 @@
 """
 Lightning tasks for mridangam drum problems
 """
+from typing import Optional
 from typing import Tuple
 
 import pytorch_lightning as pl
@@ -69,6 +70,7 @@ class TransientStationarySeparation(pl.LightningModule):
         reconstruction_weight: float = 1.0,
         transient_weight: float = 1.0,
         stationary_weight: float = 1.0,
+        film_encoder: Optional[torch.nn.Module] = None,
     ) -> None:
         super().__init__()
         self.model = model
@@ -78,9 +80,15 @@ class TransientStationarySeparation(pl.LightningModule):
         self.r_weight = reconstruction_weight
         self.t_weight = transient_weight
         self.s_weight = stationary_weight
+        self.film_encoder = film_encoder
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        y = self.model(x)
+    def forward(
+        self, x: torch.Tensor, embedding: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if self.film_encoder is not None:
+            embedding = self.film_encoder(embedding)
+
+        y = self.model(x, embedding)
         assert y.shape[1] == 2, "Model output must have two channels"
         transient = y[:, 0:1]
         stationary = y[:, 1:2]
@@ -91,8 +99,8 @@ class TransientStationarySeparation(pl.LightningModule):
         return optimizer
 
     def _do_step(self, batch: Tuple[torch.tensor, str]):
-        audio, _, _ = batch
-        y_trans, y_stat = self(audio)
+        audio, embedding, _ = batch
+        y_trans, y_stat = self(audio, embedding)
         y_hat = y_trans + y_stat
 
         r_loss = self.r_weight * self.r_loss(y_hat, audio)

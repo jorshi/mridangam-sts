@@ -2,6 +2,7 @@
 Models used for Mridangam tasks
 """
 from typing import List
+from typing import Optional
 
 import torch
 
@@ -34,6 +35,27 @@ def _get_activation(activation: str):
     return getattr(torch.nn, activation)()
 
 
+class FiLM(torch.nn.Module):
+    """
+    Feature Independent Layer-wise Modulation
+    """
+
+    def __init__(self, in_channels: int, embedding_size: int) -> None:
+        super().__init__()
+        self.norm = torch.nn.BatchNorm1d(in_channels, affine=False)
+        self.net = torch.nn.Linear(embedding_size, in_channels * 2)
+
+    def forward(self, x: torch.Tensor, embedding: torch.Tensor):
+        assert embedding.ndim == 3
+        assert embedding.shape[1] == 1
+        embedding = embedding.squeeze(1)
+
+        film = self.net(embedding)
+        gamma, beta = film.chunk(2, dim=-1)
+        x = self.norm(x)
+        return x * gamma[..., None] + beta[..., None]
+
+
 class DilatedResidualConvolution(torch.nn.Module):
     """
     A single layer with a 1D residual convoluation
@@ -53,6 +75,8 @@ class DilatedResidualConvolution(torch.nn.Module):
         kernel_size: int,
         dilation: int,
         activation: str = "GELU",
+        use_film: bool = False,
+        film_size: Optional[int] = None,
     ) -> None:
         super().__init__()
 
@@ -64,14 +88,21 @@ class DilatedResidualConvolution(torch.nn.Module):
             dilation=dilation,
             padding="same",
         )
+        if use_film:
+            self.film = FiLM(out_channels, film_size)
         self.activation = _get_activation(activation)
         self.residual = torch.nn.Conv1d(in_channels, out_channels, 1)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, embedding: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         assert x.dim() == 3
         assert x.shape[1] == self.convolution.in_channels
         y = self.norm(x)
         y = self.convolution(y)
+        if hasattr(self, "film"):
+            assert embedding is not None
+            y = self.film(y, embedding)
         y = self.activation(y)
         return y + self.residual(x)
 
@@ -86,8 +117,13 @@ class TCN(torch.nn.Module):
         num_layers: int = 8,
         kernel_size: int = 3,
         activation: str = "GELU",
+        use_film: bool = False,
+        film_size: int = None,
     ) -> None:
         super().__init__()
+        if use_film:
+            assert film_size is not None, "Must pass in film embedding size"
+
         self.in_projection = torch.nn.Conv1d(in_channels, hidden_channels, 1)
         self.out_projection = torch.nn.Conv1d(hidden_channels, out_channels, 1)
 
@@ -101,12 +137,20 @@ class TCN(torch.nn.Module):
                     kernel_size=kernel_size,
                     dilation=dilation,
                     activation=activation,
+                    use_film=use_film,
+                    film_size=film_size,
                 )
             )
-        self.net = torch.nn.Sequential(*net)
+        self.net = torch.nn.ModuleList(net)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, embedding: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         x = self.in_projection(x)
-        x = self.net(x)
+
+        # Apply all the convolutionas and FiLM (if using)
+        for layer in self.net:
+            x = layer(x, embedding)
+
         x = self.out_projection(x)
         return x
