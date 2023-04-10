@@ -62,8 +62,7 @@ class TransientStationarySeparation(pl.LightningModule):
 
     def __init__(
         self,
-        transient: torch.nn.Module,
-        stationary: torch.nn.Module,
+        model: torch.nn.Module,
         reconstruction_loss: torch.nn.Module,
         transient_loss: torch.nn.Module,
         stationary_loss: torch.nn.Module,
@@ -72,8 +71,7 @@ class TransientStationarySeparation(pl.LightningModule):
         stationary_weight: float = 1.0,
     ) -> None:
         super().__init__()
-        self.transient = transient
-        self.stationary = stationary
+        self.model = model
         self.r_loss = reconstruction_loss
         self.t_loss = transient_loss
         self.s_loss = stationary_loss
@@ -82,7 +80,11 @@ class TransientStationarySeparation(pl.LightningModule):
         self.s_weight = stationary_weight
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self.transient(x), self.stationary(x)
+        y = self.model(x)
+        assert y.shape[1] == 2, "Model output must have two channels"
+        transient = y[:, 0:1]
+        stationary = y[:, 1:2]
+        return transient, stationary
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)

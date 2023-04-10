@@ -32,16 +32,13 @@ class STFTDiff(torch.nn.Module):
         assert y.shape[1] == 1, "Input must be mono"
 
         Y = self._magnitude_stft(y.squeeze(1))
+
+        # L2 norm of the difference along temporal or frequency axis
         Y_diff = torch.diff(Y, dim=self.diff)
+        loss = torch.sum(torch.square(Y_diff))
 
-        if self.diff == -1:
-            Y = Y[..., 1:]
-        else:
-            Y = Y[..., 1:, :]
-
-        loss = torch.sum(torch.square(Y - Y_diff))
+        # Normalize using the L2 of the input
         loss = loss / torch.sum(torch.square(Y))
-
         return loss
 
     def _magnitude_stft(self, x: torch.Tensor) -> torch.Tensor:
