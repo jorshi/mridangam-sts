@@ -41,7 +41,7 @@ from mridangam.tasks import TransientStationarySeparation
 datamodule = MridangamDataModule(
     dataset_dir="dataset/preprocesed",
     unprocessed_dir="dataset/mridangam_stroke_1.5/",
-    batch_size=1,
+    batch_size=2,
     num_workers=0,
     attribute="tonic",
     max_files=500,
@@ -70,9 +70,9 @@ model = MridangamTonicClassification(model=mlp)
 
 accelerator = "gpu" if torch.cuda.is_available() else "cpu"
 trainer = pl.Trainer(max_epochs=1000, accelerator=accelerator, log_every_n_steps=10)
-trainer.fit(
-    model=model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader
-)
+# trainer.fit(
+#     model=model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader
+# )
 
 datamodule.setup("test")
 test_dataloader = datamodule.test_dataloader()
@@ -89,20 +89,10 @@ print(torch.argmax(y))
 
 # # Mridangam Transient/Stationary Separation
 
-# +
-transient_tcn = TCN(
+tcn = TCN(
     in_channels=1,
-    hidden_channels=16,
-    out_channels=1,
-    dilation_base=2,
-    num_layers=12,
-    kernel_size=3,
-)
-
-sustain_tcn = TCN(
-    in_channels=1,
-    hidden_channels=16,
-    out_channels=1,
+    hidden_channels=32,
+    out_channels=2,
     dilation_base=2,
     num_layers=12,
     kernel_size=3,
@@ -114,8 +104,7 @@ stationary_loss = StationaryRegularization()
 recon_loss = MSS()
 
 tss_model = TransientStationarySeparation(
-    transient_tcn,
-    sustain_tcn,
+    tcn,
     reconstruction_loss=recon_loss,
     transient_loss=transient_loss,
     stationary_loss=stationary_loss,
@@ -124,9 +113,9 @@ tss_model = TransientStationarySeparation(
 # +
 audio, embedding, label = next(iter(train_dataloader))
 
-trans, sus = tss_model(audio)
-print(trans.shape)
-print(sus.shape)
+t, s = tss_model(audio)
+print(t.shape)
+print(s.shape)
 # -
 
 trainer = pl.Trainer(max_epochs=1000, accelerator="cpu")
@@ -139,3 +128,45 @@ ipd.display(ipd.Audio(audio[0, 0].detach().cpu().numpy(), rate=48000))
 ipd.display(ipd.Audio(trans[0, 0].detach().cpu().numpy(), rate=48000))
 ipd.display(ipd.Audio(sus[0, 0].detach().cpu().numpy(), rate=48000))
 # -
+
+# # Combining Approaches
+#
+# Now we'll pass the embedding generated using Crepe to a FiLM operator that will
+# modulare each layer of the transient/stationary separation decoder.
+
+film_encoder = MLP(in_features=2048, hidden=[256], out_features=128)
+tcn_film = TCN(
+    in_channels=1,
+    hidden_channels=32,
+    out_channels=2,
+    dilation_base=2,
+    num_layers=12,
+    kernel_size=3,
+    use_film=True,
+    film_size=128,
+)
+
+# +
+transient_loss = TransientRegularization()
+stationary_loss = StationaryRegularization()
+recon_loss = MSS()
+
+tss_film_model = TransientStationarySeparation(
+    tcn_film,
+    film_encoder=film_encoder,
+    reconstruction_loss=recon_loss,
+    transient_loss=transient_loss,
+    stationary_loss=stationary_loss,
+)
+
+# +
+audio, embedding, label = next(iter(train_dataloader))
+print(embedding.shape)
+
+t, s = tss_film_model(audio, embedding)
+print(t.shape)
+print(s.shape)
+# -
+
+trainer = pl.Trainer(max_epochs=1000, accelerator="cpu")
+trainer.fit(model=tss_film_model, train_dataloaders=train_dataloader)
