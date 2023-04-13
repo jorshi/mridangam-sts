@@ -71,6 +71,7 @@ class TransientStationarySeparation(pl.LightningModule):
         transient_weight: float = 1.0,
         stationary_weight: float = 1.0,
         film_encoder: Optional[torch.nn.Module] = None,
+        learning_rate: float = 1e-4,
     ) -> None:
         super().__init__()
         self.model = model
@@ -81,6 +82,7 @@ class TransientStationarySeparation(pl.LightningModule):
         self.t_weight = transient_weight
         self.s_weight = stationary_weight
         self.film_encoder = film_encoder
+        self.learning_rate = learning_rate
 
     def forward(
         self, x: torch.Tensor, embedding: Optional[torch.Tensor] = None
@@ -95,7 +97,7 @@ class TransientStationarySeparation(pl.LightningModule):
         return transient, stationary
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         return optimizer
 
     def _do_step(self, batch: Tuple[torch.tensor, str]):

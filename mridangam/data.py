@@ -95,6 +95,7 @@ class MridangamDataModule(pl.LightningDataModule):
 
             # Get an embedding from crepe
             embed = torchcrepe.embed_from_file(file, device=self.device)
+            embed = embed.detach().cpu()
             embed = embed.flatten(2)
             embed = torch.mean(embed, dim=1)
             torch.save(embed, outfile_embed)

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 packages = ["mridangam"]
 
 [project]
-name = "kick2kick"
+name = "mridangam"
 version = "0.0.1"
 dependencies = [
     "auraloss",
