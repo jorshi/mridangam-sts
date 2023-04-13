@@ -14,7 +14,7 @@ class MSS(torch.nn.Module):
 
     def forward(self, y_hat: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         return self.loss_fn(y_hat, y)
-    
+
 
 class ReconstructionLoss(torch.nn.Module):
     def __init__(self):
