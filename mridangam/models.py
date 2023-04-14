@@ -26,6 +26,7 @@ class MLP(torch.nn.Module):
                 ]
             )
         self.model = torch.nn.Sequential(*model)
+        self.num_classes = out_features
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)

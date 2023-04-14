@@ -6,6 +6,7 @@ from typing import Tuple
 
 import pytorch_lightning as pl
 import torch
+from torchmetrics import Accuracy
 
 
 class MridangamTonicClassification(pl.LightningModule):
@@ -16,42 +17,67 @@ class MridangamTonicClassification(pl.LightningModule):
         model: a model to produce a fixed embedding
     """
 
-    def __init__(self, model: torch.nn.Module) -> None:
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        lr: float = 1e-3,
+        reduce_factor: float = 0.5,
+        reduce_patience: int = 25,
+    ) -> None:
         super().__init__()
         self.model = model
+        self.lr = lr
+        self.reduce_factor = reduce_factor
+        self.reduce_patience = reduce_patience
         self.loss_fn = torch.nn.CrossEntropyLoss()
+        self.accuracy = Accuracy("multiclass", num_classes=self.model.num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-        return optimizer
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer=optimizer,
+            mode="min",
+            factor=self.reduce_factor,
+            patience=self.reduce_patience,
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "validation/loss",
+                "interval": "epoch",
+            },
+        }
 
     def _do_step(self, batch: Tuple[torch.Tensor, torch.Tensor, str]):
         _, embedding, label = batch
         y_hat = self(embedding)
         y_hat = y_hat.squeeze(1)
         loss = self.loss_fn(y_hat, label)
-        return loss
+        return loss, y_hat
 
     def training_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor, str], batch_idx: int
     ):
-        loss = self._do_step(batch)
+        loss, _ = self._do_step(batch)
         self.log("train/loss", loss, on_epoch=True)
         return loss
 
     def validation_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor, str], batch_idx: int
     ):
-        loss = self._do_step(batch)
+        loss, _ = self._do_step(batch)
         self.log("validation/loss", loss)
         return loss
 
     def test_step(self, batch: Tuple[torch.Tensor, torch.Tensor, str], batch_idx: int):
-        loss = self._do_step(batch)
+        loss, y_hat = self._do_step(batch)
         self.log("test/loss", loss)
+        self.log("test/accuracy", self.accuracy(y_hat, batch[-1]))
         return loss
 
 
@@ -72,6 +98,8 @@ class TransientStationarySeparation(pl.LightningModule):
         stationary_weight: float = 1.0,
         film_encoder: Optional[torch.nn.Module] = None,
         learning_rate: float = 1e-4,
+        reduce_factor: float = 0.5,
+        reduce_patience: int = 25,
     ) -> None:
         super().__init__()
         self.model = model
@@ -82,7 +110,9 @@ class TransientStationarySeparation(pl.LightningModule):
         self.t_weight = transient_weight
         self.s_weight = stationary_weight
         self.film_encoder = film_encoder
-        self.learning_rate = learning_rate
+        self.lr = learning_rate
+        self.reduce_factor = reduce_factor
+        self.reduce_patience = reduce_patience
 
     def forward(
         self, x: torch.Tensor, embedding: Optional[torch.Tensor] = None
@@ -97,8 +127,22 @@ class TransientStationarySeparation(pl.LightningModule):
         return transient, stationary
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        return optimizer
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer=optimizer,
+            mode="min",
+            factor=self.reduce_factor,
+            patience=self.reduce_patience,
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "validation/loss",
+                "interval": "epoch",
+            },
+        }
 
     def _do_step(self, batch: Tuple[torch.tensor, str]):
         audio, embedding, _ = batch
