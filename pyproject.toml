@@ -18,6 +18,8 @@ dependencies = [
     "torchcrepe",
     "notebook",
     "tensorboard",
+    "matplotlib",
+    "librosa",
 ]
 
 [project.optional-dependencies]
