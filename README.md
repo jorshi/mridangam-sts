@@ -1,4 +1,4 @@
-# Pitch-Informed Transient-Stationary Separation
+# Pitch-Informed Stationary-Transient Separation
 ### Using the Mridangam Dataset
 
 ## Dataset
@@ -15,3 +15,8 @@ To install with development dependencies:
 ```bash
 pip install -e ".[dev]"
 ```
+
+## Experiments
+
+All code for running experiments is in `experiments.ipynb`
+
