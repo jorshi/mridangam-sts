@@ -16,6 +16,16 @@ class MSS(torch.nn.Module):
         return self.loss_fn(y_hat, y)
 
 
+class ReconstructionLoss(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.mss = MSS()
+        self.waveform = torch.nn.L1Loss()
+
+    def forward(self, y_hat: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        return self.mss(y_hat, y) + self.waveform(y_hat, y)
+
+
 class STFTDiff(torch.nn.Module):
     def __init__(
         self, diff: Literal["time", "frequency"], n_fft: int = 2048, hop_size: int = 128

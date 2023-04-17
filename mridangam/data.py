@@ -28,6 +28,8 @@ class MridangamDataModule(pl.LightningDataModule):
         sample_rate: int = 48000,
         device: str = "cpu",
         max_files: int = None,
+        train_size: float = 0.8,
+        val_size: float = 0.1,
     ):
         super().__init__()
         self.dataset_dir = Path(dataset_dir)
@@ -38,6 +40,8 @@ class MridangamDataModule(pl.LightningDataModule):
         self.sample_rate = sample_rate
         self.device = device
         self.max_files = max_files
+        self.train_size = train_size
+        self.val_size = val_size
 
         self.audio = None
         self.embeddings = None
@@ -95,6 +99,7 @@ class MridangamDataModule(pl.LightningDataModule):
 
             # Get an embedding from crepe
             embed = torchcrepe.embed_from_file(file, device=self.device)
+            embed = embed.detach().cpu()
             embed = embed.flatten(2)
             embed = torch.mean(embed, dim=1)
             torch.save(embed, outfile_embed)
@@ -127,18 +132,38 @@ class MridangamDataModule(pl.LightningDataModule):
 
         if stage == "fit":
             self.train_dataset = AudioDataset(
-                self.audio, self.embeddings, attr, split="train"
+                self.audio,
+                self.embeddings,
+                attr,
+                split="train",
+                train_size=self.train_size,
+                val_size=self.val_size,
             )
             self.val_dataset = AudioDataset(
-                self.audio, self.embeddings, attr, split="val"
+                self.audio,
+                self.embeddings,
+                attr,
+                split="val",
+                train_size=self.train_size,
+                val_size=self.val_size,
             )
         elif stage == "validate":
             self.val_dataset = AudioDataset(
-                self.audio, self.embeddings, attr, split="val"
+                self.audio,
+                self.embeddings,
+                attr,
+                split="val",
+                train_size=self.train_size,
+                val_size=self.val_size,
             )
         elif stage == "test":
             self.test_dataset = AudioDataset(
-                self.audio, self.embeddings, attr, split="test"
+                self.audio,
+                self.embeddings,
+                attr,
+                split="test",
+                train_size=self.train_size,
+                val_size=self.val_size,
             )
 
     def train_dataloader(self):
@@ -174,6 +199,8 @@ class AudioDataset(Dataset):
         annotations: List[str],
         split: str,
         seed: int = 42,
+        train_size: float = 0.8,
+        val_size: float = 0.1,
     ):
         super().__init__()
         self.audio = audio
@@ -190,6 +217,8 @@ class AudioDataset(Dataset):
         self.seed = seed
         self.split = split
         self.ids = list(range(len(self.audio)))
+        self.train_size = train_size
+        self.val_size = val_size
         self._random_split(split)
 
     def __len__(self):
@@ -203,6 +232,12 @@ class AudioDataset(Dataset):
     def num_classes(self):
         return len(self.labels)
 
+    def get_label_from_idx(self, idx):
+        for key, value in self.label_key.items():
+            if value == idx:
+                return key
+        return None
+
     def _random_split(self, split: str):
         """
         Split the dataset into train, validation, and test sets.
@@ -215,7 +250,7 @@ class AudioDataset(Dataset):
 
         splits = random_split(
             self.ids,
-            [0.8, 0.1, 0.1],
+            [self.train_size, self.val_size, 1 - self.train_size - self.val_size],
             generator=torch.Generator().manual_seed(self.seed),
         )
 
